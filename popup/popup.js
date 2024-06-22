@@ -2,6 +2,10 @@ let btn = document.getElementById("convert-btn");
 let progress_bar = document.getElementsByClassName("progress")[0];
 let progress = document.getElementsByClassName("determinate")[0];
 let tabid;
+let instance_modal;
+const debugging = false;
+let pages;
+let div_modal;
 progress_bar.style.display = "none";
 
 // check if current page is a valid book page
@@ -23,23 +27,22 @@ browser.tabs.query({currentWindow: true, active: true})
     else disable_popup();
 })
 .catch(e => {
-    console.error(e);
+    error(e);
     disable_popup();
 });
 
 btn.onclick = () => {
-    browser.tabs.executeScript({file: "/libraries/browser-polyfill.min.js"})
-    .then(() => browser.tabs.insertCSS({file: "/libraries/materialize/materialize.min.css"}))
-    .then(() => browser.tabs.executeScript({file: "/libraries/materialize/materialize.min.js"}))
-    .then(() => browser.tabs.insertCSS({file: "/scripts/inject.css"}))
-    .then(() => browser.tabs.executeScript({file: "/libraries/pdfkit.standalone.min.js"}))
-    .then(() => browser.tabs.executeScript({file: "/libraries/svg-to-pdfkit.min.js"}))
-    .then(() => browser.tabs.executeScript({file: "/libraries/saveSvgAsPng.js"}))
-    .then(() => browser.tabs.executeScript({file: "/scripts/inject.js"}))
+    chrome.scripting.executeScript({target: {tabId: tabid}, files: ["/libraries/browser-polyfill.min.js"]})
+    .then(() => chrome.scripting.insertCSS({target: {tabId: tabid}, files: ["/libraries/materialize/materialize.min.css"]}))
+    .then(() => chrome.scripting.executeScript({target: {tabId: tabid}, files: ["/libraries/materialize/materialize.min.js"]}))
+    .then(() => chrome.scripting.executeScript({target: {tabId: tabid}, files: ["/libraries/pdfkit.standalone.js"]}))
+    .then(() => chrome.scripting.executeScript({target: {tabId: tabid}, files: ["/libraries/svg-to-pdfkit.min.js"]}))
+    .then(() => chrome.scripting.executeScript({target: {tabId: tabid}, files: ["/libraries/saveSvgAsPng.js"]}))
+    .then(() => chrome.scripting.executeScript({target: {tabId: tabid}, files: ["/scripts/inject.js"]}))
     .then(() => {
         browser.runtime.sendMessage({type: "update_tabid", tabid})
-        console.log("inserted all scripts");
-        window.close();
+        log("inserted all scripts");
+        initModal();
     });
 }
 
@@ -95,3 +98,176 @@ browser.runtime.sendMessage({type: "is_converting"})
         btn.innerText = "Konvertieren";
     }
 })
+
+function initModal() {
+    debugLog("Initiating")
+    let d4s2pdf_modal = /* html */ 
+   `<div class="modal-content">
+      <div class="header">
+        <img src="https://cdn.digi4school.at/img/d4s_logo.png">
+        <span>&nbsp;to PDF</span>
+      </div>
+      <div class="content row">
+      <div class="input-field col s12">
+        <select id="savemethod">
+          <option value="png">Als PNG (Rasterisiert)</option>
+          <option value="vector" selected>Vektorgrafik (Hochauflösend)</option>
+        </select>
+        <label>Speichermethode</label>
+      </div>
+      <div class="col s1"></div>
+      <div id="png-info" class="col s11" style="display: none">
+        <p class="range-field">
+          <label>Skalierung: <span id="scale-display">0.75</span>x</label>
+          <input type="range" id="scale" min="1" max="16" value="4"/>
+        </p>
+        <p>Achtung: Je höher die Auflösung ist, desto länger braucht der Vorgang und die Ergebnis-PDF verbraucht mehr Speicherplatz.
+    </p>
+      </div>
+      <p class="col s11" id="vector-info">Achtung: Manche Bilder können nicht gespeichert werden.</p>
+      <div class="row">
+        <div class="input-field col s6">
+          <input id="from-page" type="text">
+          <label for="from-page">Ab Seite</label>
+        </div>
+        <div class="input-field col s6">
+          <input id="to-page" type="text">
+          <label for="to-page">Bis Seite</label>
+        </div>
+      </div>
+      <span style="display: none" id="page-error" class="d4s2pdf-error">Ungültiger Seitenbereich</span>
+      <form action="#">
+        <p>
+          <label>
+            <input id="safe-mode" type="checkbox" />
+            <span title="Halbe Geschwindigkeit, falls das PDF nicht erscheint">Sicherer Modus</span>
+          </label>
+        </p>
+        <p>
+          <label>
+            <input id="slow-mode" type="checkbox" />
+            <span title="Drosselt die Geschwindigkeit auf 1 Seite pro Sekunde">Langsam Modus</span>
+          </label>
+        </p>
+      </form>
+    </div>
+    </div>
+      <div class="modal-footer">
+      <button id="button-close" class="modal-close waves-effect waves-green btn">Abbrechen</button>&nbsp;&nbsp;
+      <button id="button-convert-custom" class="waves-effect waves-green btn btn-d4s2pdf">Konvertieren</button>
+    </div>`;
+
+  div_modal = document.createElement("div");
+  div_modal.id = "modal";
+  div_modal.classList.add("modal");
+
+  div_modal.innerHTML = d4s2pdf_modal;
+
+  document.body.prepend(div_modal);
+
+  M.Modal.init(document.querySelectorAll(".modal"));
+  M.FormSelect.init(document.querySelectorAll("#savemethod"));
+
+  instance_modal = M.Modal.getInstance(div_modal);
+  instance_modal.open();
+
+  let vector_info = document.getElementById("vector-info");
+  let png_info = document.getElementById("png-info");
+  let safemode = document.getElementById("safe-mode");
+  let slowmode = document.getElementById("safe-mode");
+
+  // interface listeners
+  let savemethod = document.getElementById("savemethod");
+  savemethod.onchange = () => {
+    if (savemethod.value === "png") {
+      png_info.style.display = null;
+      vector_info.style.display = "none";
+    } else {
+      vector_info.style.display = null;
+      png_info.style.display = "none";
+    }
+  };
+
+  let scale_display = document.getElementById("scale-display");
+  let scale = document.getElementById("scale");
+
+  scale.oninput = () => {
+    scale_display.innerText = Number(scale.value) * 0.25;
+  };
+
+  let btn_convert = document.getElementById("button-convert-custom");
+
+  let from_page = document.getElementById("from-page");
+  let to_page = document.getElementById("to-page");
+  let page_error = document.getElementById("page-error");
+
+  from_page.max = pages;
+  to_page.max = pages;
+
+  let check_page_error = () => {
+    if (
+      from_page.value.match(/^[\d]*$/) === null ||
+      to_page.value.match(/^[\d]*$/) === null ||
+      (Number(to_page.value) >= 1 && Number(from_page.value) > Number(to_page.value)) ||
+      Number(from_page.value) > pages ||
+      Number(to_page.value) > pages
+    ) {
+      page_error.style.display = null;
+      btn_convert.classList.add("disabled");
+    } else {
+      page_error.style.display = "none";
+      btn_convert.classList.remove("disabled");
+    }
+  };
+
+  btn_convert.onclick = () => {
+    const message = {
+        type: "init_convert",
+        options: {
+            savemethod: savemethod.value,
+            from_page: from_page.value,
+            to_page: to_page.value,
+            scale: scale.value,
+            safemode: safemode.checked,
+            slowmode: slowmode.checked
+        }
+    }
+
+    browser.tabs.sendMessage(tabid, message);
+    log("Initiated conversion start")
+    window.close()
+  }
+
+
+  from_page.oninput = check_page_error;
+  to_page.oninput = check_page_error;
+
+  document.getElementById("button-close").onclick = remove_custom_css;
+}
+
+let remove_custom_css = () => {
+    document.body.removeChild(div_modal);
+};
+
+browser.runtime.onMessage.addListener(onMessage);
+
+function onMessage(message) {
+    if(message.type === "close_option_modal") {
+        instance_modal.close();
+        remove_custom_css();
+    } else if(message.type === "update_pages_count") {
+        pages = message.pages;
+    }
+}
+
+function debugLog(obj){
+if (debugging) log(obj);
+}
+
+function log(message) {
+    browser.tabs.sendMessage(tabid, {type: "log", message: JSON.stringify(message)});
+}
+
+function error(message) {
+    browser.tabs.sendMessage(tabid, {type: "error", message: JSON.stringify(message)});
+}

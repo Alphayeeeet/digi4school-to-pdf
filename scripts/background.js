@@ -1,12 +1,14 @@
+importScripts('../libraries/browser-polyfill.min.js');
+
 const update_icon = () =>
   browser.tabs.query({ currentWindow: true, active: true }).then((tabs) => {
     let tab = tabs[0]; // Safe to assume there will only be one result
     if (is_valid_page(tab.url))
-      browser.browserAction.setIcon({
+      browser.action.setIcon({
         path: "../assets/icon-64.png",
       });
     else
-      browser.browserAction.setIcon({
+      browser.action.setIcon({
         path: "../assets/icon-64-disabled.png",
       });
   }, console.error);

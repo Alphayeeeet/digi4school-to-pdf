@@ -1,148 +1,46 @@
-debuging = false;
+debugging = false;
+
+console.log("Loaded ingect.js");
 
 (() => {
   let pages;
 
-  let d4s2pdf_modal = /* html */ 
-   `<div class="modal-content">
-      <div class="header">
-        <img src="https://cdn.digi4school.at/img/d4s_logo.png">
-        <span>&nbsp;to PDF</span>
-      </div>
-      <div class="content row">
-      <div class="input-field col s12">
-        <select id="savemethod">
-          <option value="png">Als PNG (Rasterisiert)</option>
-          <option value="vector" selected>Vektorgrafik (Hochauflösend)</option>
-        </select>
-        <label>Speichermethode</label>
-      </div>
-      <div class="col s1"></div>
-      <div id="png-info" class="col s11" style="display: none">
-        <p class="range-field">
-          <label>Skalierung: <span id="scale-display">0.75</span>x</label>
-          <input type="range" id="scale" min="1" max="16" value="4"/>
-        </p>
-        <p>Achtung: Je höher die Auflösung ist, desto länger braucht der Vorgang und die Ergebnis-PDF verbraucht mehr Speicherplatz.
-    </p>
-      </div>
-      <p class="col s11" id="vector-info">Achtung: Manche Bilder können nicht gespeichert werden.</p>
-      <div class="row">
-        <div class="input-field col s6">
-          <input id="from-page" type="text">
-          <label for="from-page">Ab Seite</label>
-        </div>
-        <div class="input-field col s6">
-          <input id="to-page" type="text">
-          <label for="to-page">Bis Seite</label>
-        </div>
-      </div>
-      <span style="display: none" id="page-error" class="d4s2pdf-error">Ungültiger Seitenbereich</span>
-      <form action="#">
-        <p>
-          <label>
-            <input id="safe-mode" type="checkbox" />
-            <span title="Halbe Geschwindigkeit, falls das PDF nicht erscheint">Sicherer Modus</span>
-          </label>
-        </p>
-      </form>
-    </div>
-    </div>
-      <div class="modal-footer">
-      <button id="button-close" class="modal-close waves-effect waves-green btn">Abbrechen</button>&nbsp;&nbsp;
-      <button id="button-convert" class="waves-effect waves-green btn btn-d4s2pdf">Konvertieren</button>
-    </div>`;
-
-  let div_modal = document.createElement("div");
-  div_modal.id = "modal";
-  div_modal.classList.add("modal");
-
-  div_modal.innerHTML = d4s2pdf_modal;
-
-  document.body.prepend(div_modal);
-
-  M.Modal.init(document.querySelectorAll(".modal"));
-  M.FormSelect.init(document.querySelectorAll("#savemethod"));
-
-  instance_modal = M.Modal.getInstance(div_modal);
-  instance_modal.open();
-
-  let vector_info = document.getElementById("vector-info");
-  let png_info = document.getElementById("png-info");
-  let safemode = document.getElementById("safe-mode");
-
-  // interface listeners
-  let savemethod = document.getElementById("savemethod");
-  savemethod.onchange = () => {
-    if (savemethod.value === "png") {
-      png_info.style.display = null;
-      vector_info.style.display = "none";
-    } else {
-      vector_info.style.display = null;
-      png_info.style.display = "none";
-    }
-  };
-
-  let scale_display = document.getElementById("scale-display");
-  let scale = document.getElementById("scale");
-
-  scale.oninput = () => {
-    scale_display.innerText = Number(scale.value) * 0.25;
-  };
-
-  let btn_convert = document.getElementById("button-convert");
-
-  let from_page = document.getElementById("from-page");
-  let to_page = document.getElementById("to-page");
-  let page_error = document.getElementById("page-error");
+  debugLog("Called ingect.js");
+  
   pages = document.getElementById("goBtn").childElementCount;
+  browser.runtime.sendMessage({ type: "update_pages_count", pages: pages});
 
-  from_page.max = pages;
-  to_page.max = pages;
+  function onMessage(message) {
+    debugLog("Receive message")
+    debugLog(message)
+    if (message.type === "init_convert") {
+      debugLog("Inject received init messsage");
+      if(message.options === undefined || message.options === null) {
+        console.error("Need options to start convert");
+        return;
+      }
 
-  let check_page_error = () => {
-    if (
-      from_page.value.match(/^[\d]*$/) === null ||
-      to_page.value.match(/^[\d]*$/) === null ||
-      (Number(to_page.value) >= 1 && Number(from_page.value) > Number(to_page.value)) ||
-      Number(from_page.value) > pages ||
-      Number(to_page.value) > pages
-    ) {
-      page_error.style.display = null;
-      btn_convert.classList.add("disabled");
-    } else {
-      page_error.style.display = "none";
-      btn_convert.classList.remove("disabled");
+      let options = {
+        title: document.title,
+        savemethod: message.options.savemethod,
+        scale: message.options.savemethod === "png" ? message.options.scale * 0.25 : 1,
+        from_page: message.options.from_page !== undefined && message.options.from_page !== null && message.options.from_page.length !== 0 ? Number(message.options.from_page) : 1,
+        to_page: message.options.to_page !== undefined && message.options.to_page !== null && message.options.to_page.length !== 0 ? Number(message.options.to_page) : pages,
+        safemode: message.options.safemode,
+        slowmode: message.options.slowmode
+      };
+
+      console.log("Starting conversion with options");
+      debugLog(options)
+  
+      generate_pdf(options);
+
+      browser.runtime.sendMessage({ type: "close_option_modal"});
     }
-  };
+  }
 
-  from_page.oninput = check_page_error;
-  to_page.oninput = check_page_error;
-
-  let remove_custom_css = () => {
-    document.body.removeChild(div_modal);
-    browser.runtime.sendMessage({ type: "remove_custom_css" });
-  };
-
-  btn_convert.onclick = () => {
-    let options = {
-      title: document.title,
-      savemethod: savemethod.value,
-      scale: savemethod.value === "png" ? scale.value * 0.25 : 1,
-      from_page: from_page.value.length > 0 ? Number(from_page.value) : 1,
-      to_page: to_page.value.length > 0 ? Number(to_page.value) : pages,
-      safemode: safemode.checked
-    };
-    console.log("options:");
-    console.log(options);
-
-    generate_pdf(options);
-
-    instance_modal.close();
-    remove_custom_css();
-  };
-
-  document.getElementById("button-close").onclick = remove_custom_css;
+  browser.runtime.onMessage.addListener(onMessage);
+  //btn_convert.click();
 
   async function generate_pdf(options) {
     let http = new XMLHttpRequest();
@@ -213,7 +111,10 @@ debuging = false;
       if (msg.type === "cancel_convert") canceled = true;
     });
 
-    window.onbeforeunload = () => {
+    window.onbeforeunload = (event) => {
+      console.log("Attemmpt to leave to:")
+      console.log(window.location)
+      console.log(event)
       browser.runtime.sendMessage({
         type: "stop_converting",
       });
@@ -226,11 +127,12 @@ debuging = false;
       try {
         await download_svg(i);
       } catch (error) {
-        if (error.cancel) canceled = true;
+        //if (error.cancel) canceled = true;
         if (error.msg) alert(error.msg);
-        else console.error(error);
+        console.error(error);
       }
       console.log("downloaded page " + i);
+      if(options.slowmode) await Sleep(1000);
       convert_progress.cur_page = i;
       browser.runtime.sendMessage({
         type: "update_progress",
@@ -474,6 +376,10 @@ debuging = false;
 })();
 
 function debugLog(obj){
-  if (debuging)
+  if (debugging)
     console.log(obj);
+}
+
+function Sleep(milliseconds) {
+  return new Promise(resolve => setTimeout(resolve, milliseconds));
 }

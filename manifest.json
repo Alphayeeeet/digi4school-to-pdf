@@ -1,11 +1,8 @@
 {
-
-  "manifest_version": 2,
+  "manifest_version": 3,
   "name": "digi4school to pdf",
   "version": "1.6",
-
   "author": "strukteon",
-
   "description": "Converts digi4school books to pdf so they can be used offline.",
   "homepage_url": "https://github.com/strukteon/digi4school-to-pdf",
   "icons": {
@@ -14,31 +11,24 @@
     "128": "assets/icon-128.png",
     "512": "assets/icon-512.png"
   },
-
   "permissions": [
     "activeTab",
-    "tabs"
+    "tabs",
+    "scripting"
   ],
-
-  "browser_action": {
+  "action": {
     "default_icon": "assets/icon-64.png",
     "default_title": "digi4school to pdf",
     "default_popup": "popup/popup.html"
   },
-
+  "background": {
+    "service_worker": "scripts/background.js"
+  },
   "content_scripts": [{
     "matches": ["https://*/ebook/*"],
     "js": [
       "libraries/browser-polyfill.min.js",
       "scripts/d4s_detection.js"
     ]
-  }],
-
-  "background": {
-    "scripts": [
-      "libraries/browser-polyfill.min.js",
-      "scripts/background.js"
-    ]
-  }
-
+  }]
 }
